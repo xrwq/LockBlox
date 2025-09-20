@@ -20,13 +20,12 @@ local features = {}
 local tween
 
 -- =========================
--- Fonction pour setup personnage
+-- Setup personnage
 -- =========================
 local function onCharacterAdded(char)
 	character = char
 	humanoidRoot = char:WaitForChild("HumanoidRootPart")
 end
-
 player.CharacterAdded:Connect(onCharacterAdded)
 if player.Character then onCharacterAdded(player.Character) end
 
@@ -41,7 +40,7 @@ local menu = Instance.new("Frame")
 menu.Size = UDim2.new(0,500,0,900)
 menu.Position = UDim2.new(0.5,-250,0.5,-450)
 menu.BackgroundColor3 = Color3.fromRGB(8,8,8)
-menu.BackgroundTransparency = 1
+menu.BackgroundTransparency = 0
 menu.Visible = false
 menu.Active = true
 menu.Parent = screenGui
@@ -50,15 +49,19 @@ local cornerMenu = Instance.new("UICorner")
 cornerMenu.CornerRadius = UDim.new(0,20)
 cornerMenu.Parent = menu
 
--- Gradient menu
 local menuGradient = Instance.new("UIGradient")
 menuGradient.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
-menuGradient.Transparency = NumberSequence.new{NumberSequenceKeypoint.new(0,1), NumberSequenceKeypoint.new(0.2,0.9), NumberSequenceKeypoint.new(0.5,0.5), NumberSequenceKeypoint.new(1,0)}
+menuGradient.Transparency = NumberSequence.new{
+	NumberSequenceKeypoint.new(0,1),
+	NumberSequenceKeypoint.new(0.2,0.9),
+	NumberSequenceKeypoint.new(0.5,0.5),
+	NumberSequenceKeypoint.new(1,0)
+}
 menuGradient.Rotation = 90
 menuGradient.Parent = menu
 
 -- =========================
--- Fonction création feature
+-- Création features
 -- =========================
 local function createFeature(name, order, default, defaultKey)
 	local frame = Instance.new("Frame")
@@ -137,7 +140,6 @@ createFeature("FreezeU",2,true,Enum.KeyCode.U)
 createFeature("ESP",3,false,nil)
 createFeature("AimLock",4,false,nil)
 
--- AimPart select
 local aimSelect = Instance.new("TextButton")
 aimSelect.Size = UDim2.new(0,150,0,40)
 aimSelect.Position = UDim2.new(0,50,0,50+(5*70))
@@ -162,40 +164,48 @@ aimSelect.MouseButton1Click:Connect(function()
 end)
 
 -- =========================
--- Menu Toggle & Drag
+-- Menu Drag
 -- =========================
-local menuOpen = false
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
 menu.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		local dragStart = input.Position
-		local startPos = menu.Position
-		local conn
-		conn = input.Changed:Connect(function()
+		dragging = true
+		dragStart = input.Position
+		startPos = menu.Position
+		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
-				conn:Disconnect()
+				dragging = false
 			end
 		end)
-		UserInputService.InputChanged:Connect(function(move)
-			if move.UserInputType == Enum.UserInputType.MouseMovement then
-				local delta = move.Position - dragStart
-				menu.Position = UDim2.new(startPos.X.Scale,startPos.X.Offset + delta.X,startPos.Y.Scale,startPos.Y.Offset + delta.Y)
-			end
-		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		menu.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + delta.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + delta.Y
+		)
 	end
 end)
 
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.KeyCode == Enum.KeyCode.Insert then
-		menuOpen = not menuOpen
-		menu.Visible = menuOpen
-		UserInputService.MouseIconEnabled = menuOpen
-		UserInputService.MouseBehavior = menuOpen and Enum.MouseBehavior.Default or Enum.MouseBehavior.LockCenter
+		menu.Visible = not menu.Visible
+		UserInputService.MouseIconEnabled = menu.Visible
+		UserInputService.MouseBehavior = menu.Visible and Enum.MouseBehavior.Default or Enum.MouseBehavior.LockCenter
 	end
 end)
 
 -- =========================
--- Barre Alt
+-- Barre Alt TP
 -- =========================
 local outline = Instance.new("Frame")
 outline.Size = UDim2.new(0.15,0,0,10)
@@ -208,7 +218,7 @@ cornerOutline.CornerRadius = UDim.new(0,5)
 cornerOutline.Parent = outline
 
 local bar = Instance.new("Frame")
-bar.Size = UDim2.new(0,0,1, -2)
+bar.Size = UDim2.new(0,0,1,-2)
 bar.Position = UDim2.new(0,1,0,1)
 bar.BackgroundColor3 = Color3.fromRGB(255,255,255)
 bar.BorderSizePixel = 0
@@ -243,7 +253,7 @@ local function dashToCursor()
 end
 
 -- =========================
--- Freeze
+-- Freeze GUI
 -- =========================
 local freezeGui = Instance.new("ScreenGui")
 freezeGui.ResetOnSpawn = false
@@ -256,7 +266,12 @@ frameFreeze.BackgroundTransparency = 1
 frameFreeze.Parent = freezeGui
 local uiGradient = Instance.new("UIGradient")
 uiGradient.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
-uiGradient.Transparency = NumberSequence.new{NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.2,0.9),NumberSequenceKeypoint.new(0.5,0.5),NumberSequenceKeypoint.new(1,0)}
+uiGradient.Transparency = NumberSequence.new{
+	NumberSequenceKeypoint.new(0,1),
+	NumberSequenceKeypoint.new(0.2,0.9),
+	NumberSequenceKeypoint.new(0.5,0.5),
+	NumberSequenceKeypoint.new(1,0)
+}
 uiGradient.Rotation = 90
 uiGradient.Parent = frameFreeze
 local freezeEnabled = false
@@ -320,6 +335,7 @@ UserInputService.InputBegan:Connect(function(input,gp)
 		if humanoidRoot then humanoidRoot.Anchored = freezeEnabled end
 	end
 end)
+
 UserInputService.InputEnded:Connect(function(input)
 	if features.AltTP.enabled and input.UserInputType==Enum.UserInputType.Keyboard and input.KeyCode==features.AltTP.key then
 		resetBar()
@@ -327,7 +343,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- =========================
--- AimLock + ESP
+-- RunService boucle
 -- =========================
 RunService.RenderStepped:Connect(function(dt)
 	-- Freeze fade
