@@ -1,0 +1,505 @@
+-- LocalScript dans StarterPlayerScripts
+local player = game.Players.LocalPlayer
+local players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local mouse = player:GetMouse()
+
+-- =========================
+-- Variables globales
+-- =========================
+local character
+local aimPart = "Head" -- Partie visée (Head ou HumanoidRootPart)
+local charging = false
+local tween
+local lockedPlayer = nil
+local features = {}
+
+-- =========================
+-- GUI PRINCIPAL (menu Insert)
+-- =========================
+local screenGui = Instance.new("ScreenGui")
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local menu = Instance.new("Frame")
+menu.Size = UDim2.new(0, 500, 0, 900)
+menu.Position = UDim2.new(0.5, -250, 0.5, -450)
+menu.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+menu.BackgroundTransparency = 1
+menu.Visible = false
+menu.Active = true
+menu.Parent = screenGui
+
+local cornerMenu = Instance.new("UICorner")
+cornerMenu.CornerRadius = UDim.new(0, 20)
+cornerMenu.Parent = menu
+
+-- Gradient derrière le menu
+local menuGradient = Instance.new("Frame")
+menuGradient.Size = UDim2.new(1, 0, 0.1, 0)
+menuGradient.Position = UDim2.new(0, 0, 0.9, 0)
+menuGradient.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+menuGradient.BackgroundTransparency = 1
+menuGradient.Visible = false
+menuGradient.Parent = screenGui
+
+local uiGradientMenu = Instance.new("UIGradient")
+uiGradientMenu.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+uiGradientMenu.Transparency = NumberSequence.new{
+    NumberSequenceKeypoint.new(0,1),
+    NumberSequenceKeypoint.new(0.2,0.9),
+    NumberSequenceKeypoint.new(0.5,0.5),
+    NumberSequenceKeypoint.new(1,0)
+}
+uiGradientMenu.Rotation = 90
+uiGradientMenu.Parent = menuGradient
+
+-- =========================
+-- Fonction checkbox + keybind
+-- =========================
+local function createFeature(name, order, default, defaultKey)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 400, 0, 50)
+    frame.Position = UDim2.new(0, 50, 0, 50 + (order * 70))
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    frame.Parent = menu
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+
+    -- Checkbox
+    local box = Instance.new("TextButton")
+    box.Size = UDim2.new(0, 40, 0, 40)
+    box.Position = UDim2.new(0, 5, 0.5, -20)
+    box.Text = default and "✔" or ""
+    box.Font = Enum.Font.GothamBold
+    box.TextSize = 28
+    box.TextColor3 = Color3.fromRGB(255,255,255)
+    box.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    box.Parent = frame
+
+    local cornerBox = Instance.new("UICorner")
+    cornerBox.CornerRadius = UDim.new(0, 8)
+    cornerBox.Parent = box
+
+    -- Label texte
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -120, 1, 0)
+    label.Position = UDim2.new(0, 55, 0, 0)
+    label.Text = name
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 22
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.BackgroundTransparency = 1
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+
+    -- Carré pour keybind
+    local keyButton = Instance.new("TextButton")
+    keyButton.Size = UDim2.new(0, 50, 0, 40)
+    keyButton.Position = UDim2.new(1, -55, 0.5, -20)
+    keyButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    keyButton.Text = defaultKey and defaultKey.Name or ""
+    keyButton.Font = Enum.Font.Gotham
+    keyButton.TextSize = 18
+    keyButton.TextColor3 = Color3.fromRGB(255,255,255)
+    keyButton.Parent = frame
+
+    local cornerKey = Instance.new("UICorner")
+    cornerKey.CornerRadius = UDim.new(0, 8)
+    cornerKey.Parent = keyButton
+
+    features[name] = {enabled = default, key = defaultKey}
+
+    -- Toggle checkbox
+    box.MouseButton1Click:Connect(function()
+        features[name].enabled = not features[name].enabled
+        box.Text = features[name].enabled and "✔" or ""
+    end)
+
+    -- Change keybind
+    keyButton.MouseButton1Click:Connect(function()
+        keyButton.Text = "..."
+        local connection
+        connection = UserInputService.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                features[name].key = input.KeyCode
+                keyButton.Text = input.KeyCode.Name
+                connection:Disconnect()
+            end
+        end)
+    end)
+end
+
+-- Crée les features principales
+createFeature("AltTP", 0, true, Enum.KeyCode.LeftAlt)
+createFeature("DashG", 1, true, Enum.KeyCode.G)
+createFeature("FreezeU", 2, true, Enum.KeyCode.U)
+createFeature("ESP", 3, false, nil)
+createFeature("AimLock", 4, false, nil)
+
+-- Menu pour choisir la partie visée (Head / Body)
+local aimSelect = Instance.new("TextButton")
+aimSelect.Size = UDim2.new(0, 150, 0, 40)
+aimSelect.Position = UDim2.new(0, 50, 0, 50 + (5 * 70))
+aimSelect.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+aimSelect.Text = "Aim: Head"
+aimSelect.Font = Enum.Font.Gotham
+aimSelect.TextSize = 20
+aimSelect.TextColor3 = Color3.fromRGB(255,255,255)
+aimSelect.Parent = menu
+
+local cornerAim = Instance.new("UICorner")
+cornerAim.CornerRadius = UDim.new(0, 10)
+cornerAim.Parent = aimSelect
+
+aimSelect.MouseButton1Click:Connect(function()
+    if aimPart == "Head" then
+        aimPart = "HumanoidRootPart"
+        aimSelect.Text = "Aim: Body"
+    else
+        aimPart = "Head"
+        aimSelect.Text = "Aim: Head"
+    end
+end)
+
+-- =========================
+-- Toggle menu + gestion souris
+-- =========================
+local menuOpen = false
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.Insert then
+        menuOpen = not menuOpen
+        menu.Visible = true
+        menuGradient.Visible = true
+
+        local goalMenu = {BackgroundTransparency = menuOpen and 0 or 1}
+        local goalGrad = {BackgroundTransparency = menuOpen and 0 or 1}
+
+        local tweenMenu = TweenService:Create(menu, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goalMenu)
+        local tweenGrad = TweenService:Create(menuGradient, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goalGrad)
+
+        tweenMenu:Play()
+        tweenGrad:Play()
+
+        if menuOpen then
+            UserInputService.MouseIconEnabled = true
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        else
+            UserInputService.MouseIconEnabled = false
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            tweenMenu.Completed:Connect(function()
+                menu.Visible = false
+                menuGradient.Visible = false
+            end)
+        end
+    end
+end)
+
+-- =========================
+-- Drag du menu
+-- =========================
+local dragging = false
+local dragStart, startPos
+menu.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = menu.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        menu.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- =========================
+-- Barre Alt (TP)
+-- =========================
+local outline = Instance.new("Frame")
+outline.AnchorPoint = Vector2.new(0.5, 1)
+outline.Position = UDim2.new(0.5, 0, 0.85, 0)
+outline.Size = UDim2.new(0.15, 0, 0, 10)
+outline.BackgroundColor3 = Color3.fromRGB(0,0,0)
+outline.BorderSizePixel = 0
+outline.Visible = false
+outline.Parent = screenGui
+
+local cornerOutline = Instance.new("UICorner")
+cornerOutline.CornerRadius = UDim.new(0,5)
+cornerOutline.Parent = outline
+
+local bar = Instance.new("Frame")
+bar.AnchorPoint = Vector2.new(0,0.5)
+bar.Position = UDim2.new(0,1,0.5,0)
+bar.Size = UDim2.new(0,0,1,-2)
+bar.BackgroundColor3 = Color3.fromRGB(255,255,255)
+bar.BorderSizePixel = 0
+bar.Parent = outline
+
+local cornerBar = Instance.new("UICorner")
+cornerBar.CornerRadius = UDim.new(0,5)
+cornerBar.Parent = bar
+
+local chargeTime = 1.5
+
+local function resetBar()
+    if tween then tween:Cancel() end
+    outline.Visible = false
+    bar.Size = UDim2.new(0,0,1,-2)
+end
+
+local function teleportToCursor()
+    if not character then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if root and mouse then
+        local targetPos = mouse.Hit.Position
+        root.CFrame = CFrame.new(targetPos + Vector3.new(0,3,0))
+    end
+end
+
+local function dashToCursor()
+    if not character then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if root and mouse then
+        local targetPos = mouse.Hit.Position
+        local direction = (targetPos - root.Position).Unit
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.Velocity = direction * 200
+        bodyVelocity.MaxForce = Vector3.new(1e5,1e5,1e5)
+        bodyVelocity.Parent = root
+        Debris:AddItem(bodyVelocity,0.5)
+    end
+end
+
+-- =========================
+-- Freeze GUI
+-- =========================
+local freezeGui = Instance.new("ScreenGui")
+freezeGui.Name = "FreezeUI"
+freezeGui.ResetOnSpawn = false
+freezeGui.Parent = player:WaitForChild("PlayerGui")
+
+local frameFreeze = Instance.new("Frame")
+frameFreeze.Size = UDim2.new(1,0,0.1,0)
+frameFreeze.Position = UDim2.new(0,0,0.9,0)
+frameFreeze.BackgroundColor3 = Color3.fromRGB(255,255,255)
+frameFreeze.BackgroundTransparency = 1
+frameFreeze.Parent = freezeGui
+
+local uiGradient = Instance.new("UIGradient")
+uiGradient.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
+uiGradient.Transparency = NumberSequence.new{
+    NumberSequenceKeypoint.new(0,1),
+    NumberSequenceKeypoint.new(0.2,0.9),
+    NumberSequenceKeypoint.new(0.5,0.5),
+    NumberSequenceKeypoint.new(1,0)
+}
+uiGradient.Rotation = 90
+uiGradient.Parent = frameFreeze
+
+local freezeEnabled = false
+local fadeSpeed = 3
+
+-- =========================
+-- Character respawn
+-- =========================
+local function onCharacterAdded(char)
+    character = char
+    freezeEnabled = false
+end
+player.CharacterAdded:Connect(onCharacterAdded)
+if player.Character then onCharacterAdded(player.Character) end
+
+-- =========================
+-- ESP
+-- =========================
+local espStorage = {}
+local function createESP(plr)
+    if plr == player then return end
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Thickness = 1
+    box.Color = Color3.fromRGB(0,255,0)
+    box.Filled = false
+    espStorage[plr] = box
+end
+for _, plr in pairs(players:GetPlayers()) do createESP(plr) end
+players.PlayerAdded:Connect(createESP)
+players.PlayerRemoving:Connect(function(plr)
+    if espStorage[plr] then
+        espStorage[plr]:Remove()
+        espStorage[plr] = nil
+    end
+end)
+
+-- =========================
+-- Aim Lock + Lock UI
+-- =========================
+local aiming = false
+local lockUI = Instance.new("Frame")
+lockUI.Size = UDim2.new(0,200,0,50)
+lockUI.Position = UDim2.new(0.5,-100,0.1,0)
+lockUI.BackgroundColor3 = Color3.fromRGB(50,50,50)
+lockUI.Visible = false
+lockUI.Parent = screenGui
+
+local lockCorner = Instance.new("UICorner")
+lockCorner.CornerRadius = UDim.new(0,10)
+lockCorner.Parent = lockUI
+
+local lockLabel = Instance.new("TextLabel")
+lockLabel.Size = UDim2.new(1,-10,1,-10)
+lockLabel.Position = UDim2.new(0,5,0,5)
+lockLabel.BackgroundTransparency = 1
+lockLabel.TextColor3 = Color3.fromRGB(255,255,255)
+lockLabel.Font = Enum.Font.Gotham
+lockLabel.TextSize = 20
+lockLabel.TextXAlignment = Enum.TextXAlignment.Center
+lockLabel.TextYAlignment = Enum.TextYAlignment.Center
+lockLabel.Parent = lockUI
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if features.AimLock.enabled and input.UserInputType == Enum.UserInputType.MouseButton2 then
+        aiming = true
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        aiming = false
+        lockedPlayer = nil
+        lockUI.Visible = false
+    end
+end)
+
+-- =========================
+-- Input principal
+-- =========================
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+
+    -- AltTP
+    if features.AltTP.enabled and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == features.AltTP.key then
+        if lockedPlayer and lockedPlayer.Character and lockedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            character.HumanoidRootPart.CFrame = CFrame.new(lockedPlayer.Character.HumanoidRootPart.Position + Vector3.new(0,3,0))
+        else
+            if charging then return end
+            charging = true
+            outline.Visible = true
+            bar.Size = UDim2.new(0,0,1,-2)
+            tween = TweenService:Create(bar, TweenInfo.new(chargeTime, Enum.EasingStyle.Linear), {Size = UDim2.new(1,-2,1,-2)})
+            tween:Play()
+            tween.Completed:Connect(function(playbackState)
+                if playbackState == Enum.PlaybackState.Completed and charging then
+                    resetBar()
+                    teleportToCursor()
+                    charging = false
+                end
+            end)
+        end
+    end
+
+    -- Dash
+    if features.DashG.enabled and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == features.DashG.key then
+        dashToCursor()
+    end
+
+    -- Freeze
+    if features.FreezeU.enabled and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == features.FreezeU.key then
+        freezeEnabled = not freezeEnabled
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            character.HumanoidRootPart.Anchored = freezeEnabled
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    -- AltTP release
+    if features.AltTP.enabled and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == features.AltTP.key then
+        if charging then
+            charging = false
+            resetBar()
+        end
+    end
+end)
+
+-- =========================
+-- RenderStepped
+-- =========================
+RunService.RenderStepped:Connect(function(dt)
+    -- Freeze fade
+    if freezeEnabled then
+        frameFreeze.BackgroundTransparency = frameFreeze.BackgroundTransparency - dt*fadeSpeed
+        if frameFreeze.BackgroundTransparency < 0 then frameFreeze.BackgroundTransparency = 0 end
+    else
+        frameFreeze.BackgroundTransparency = frameFreeze.BackgroundTransparency + dt*fadeSpeed
+        if frameFreeze.BackgroundTransparency > 1 then frameFreeze.BackgroundTransparency = 1
+    end
+
+    -- ESP
+    if features.ESP.enabled then
+        for plr, box in pairs(espStorage) do
+            if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local root = plr.Character.HumanoidRootPart
+                local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(root.Position)
+                if onScreen then
+                    local size = 2000/(pos.Z + 2)
+                    box.Size = Vector2.new(size, size*1.5)
+                    box.Position = Vector2.new(pos.X-size/2,pos.Y-size/2)
+                    box.Visible = true
+                else
+                    box.Visible = false
+                end
+            else
+                box.Visible = false
+            end
+        end
+    else
+        for _, box in pairs(espStorage) do box.Visible = false end
+    end
+
+    -- AimLock + lockUI
+    if aiming and features.AimLock.enabled then
+        local closest, dist = nil, math.huge
+        for _, plr in pairs(players:GetPlayers()) do
+            if plr ~= player and plr.Character and plr.Character:FindFirstChild(aimPart) then
+                local pos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(plr.Character[aimPart].Position)
+                if onScreen then
+                    local diff = (Vector2.new(pos.X,pos.Y)-Vector2.new(mouse.X,mouse.Y)).Magnitude
+                    if diff < dist then
+                        dist = diff
+                        closest = plr
+                    end
+                end
+            end
+        end
+        if closest then
+            workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, closest.Character[aimPart].Position)
+            lockedPlayer = closest
+            lockUI.Visible = true
+            lockLabel.Text = "Marquer TP : " .. closest.Name
+        else
+            lockedPlayer = nil
+            lockUI.Visible = false
+        end
+    else
+        lockedPlayer = nil
+        lockUI.Visible = false
+    end
+end)
